@@ -1,103 +1,44 @@
-Raft Lite — Lab 3
-Overview
+Distributed Transactions Lab (2PC / 3PC)
 
-This project implements a simplified Raft protocol (Raft Lite) for educational purposes. It demonstrates:
+This project implements distributed transactions using Two-Phase Commit (2PC) and Three-Phase Commit (3PC) protocols across multiple EC2 nodes. The system demonstrates atomicity, consistency, and fault tolerance in a simple key-value store.
 
-Leader election with randomized timeouts
+🟢 Components
 
-Heartbeats to maintain leader authority
+Coordinator — initiates transactions, collects votes, and decides commit/abort.
 
-Log replication with majority-based commit
+Participant (Resource Manager) — votes on transactions, applies operations locally, maintains WAL.
 
-Crash-stop recovery for both leader and follower nodes
+Client — triggers transactions on the coordinator.
 
-Cluster is deployed on AWS EC2 instances with private IPs.
+⚙️ Requirements
 
-Cluster Setup
+Python 3.x
 
-This example uses 3 nodes: A, B, C. Each node runs as an independent process.
+Standard library only (HTTP server and client)
 
-Node A
-python3 node.py --id A --port 8000 --peers B=172.31.73.173:8001,C=172.31.71.208:8002
+EC2 instances or local machines for multiple nodes
 
-Node B
-python3 node.py --id B --port 8001 --peers A=172.31.68.113:8000,C=172.31.71.208:8002
+💻 Usage
+1. Start Participants
+# Node B
+python3 participant.py --id B --port 8001 --wal /tmp/B.wal
 
-Node C
-python3 node.py --id C --port 8002 --peers A=172.31.68.113:8000,B=172.31.73.173:8001
+# Node C
+python3 participant.py --id C --port 8002 --wal /tmp/C.wal
 
+2. Start Coordinator
+python3 coordinator.py --id COORD --port 8000 --participants http://<B-IP>:8001,http://<C-IP>:8002
 
-Notes:
+3. Start Client & Trigger Transactions
+# 2PC transaction
+python3 client.py --coord http://<COORD-IP>:8000 start TX1 2PC SET x 5
 
-Nodes must be started in separate terminals.
+# 3PC transaction
+python3 client.py --coord http://<COORD-IP>:8000 start TX2 3PC SET y 10
 
-Nodes start as Followers. Leader election occurs automatically if no heartbeat is received.
+4. Check Status
+# Coordinator status
+curl http://<COORD-IP>:8000/status
 
-Client Interaction
-
-Use client.py to send commands to the current leader.
-
-python3 client.py --leader <LEADER_IP>:<LEADER_PORT> --cmd "SET x=5"
-
-
-Example:
-
-python3 client.py --leader 172.31.68.113:8000 --cmd "SET x=5"
-
-
-Command is appended to the leader's log.
-
-It is replicated to followers.
-
-Entry is committed after majority acknowledgment.
-
-Failure Experiments
-Scenario A — Leader Crash
-
-Stop the current leader (Ctrl+C).
-
-Observe a new leader election.
-
-Send new commands via the client.
-
-Restart the crashed leader — it will catch up with all committed entries.
-
-Scenario B — Follower Crash
-
-Stop a follower node.
-
-Send commands to the leader.
-
-Restart the crashed follower — it will automatically catch up with missing log entries.
-
-Logs / Expected Output
-
-Leader logs:
-
-[Leader A] Append log entry (term=1, index=0, cmd=SET x=5)
-[Leader A] Entry committed (index=0) cmd='SET x=5'
-
-
-Follower logs:
-
-[Node B] Append success (+1 entries), logLen=1
-[Node C] Append success (+1 entries), logLen=1
-[Node B] Committed index=0 cmd='SET x=5'
-[Node C] Committed index=0 cmd='SET x=5'
-
-
-Heartbeat logs:
-
-[Leader A] Sending heartbeat
-[Node B] Received heartbeat from Leader A (term 1)
-[Node C] Received heartbeat from Leader A (term 1)
-
-Requirements
-
-Python 3.10+
-
-asyncio (built-in)
-
-JSON (built-in)
-
-Network connectivity between EC2 private IPs (Security Group allows port 8000–8002)
+# Participant status
+curl http://<PARTICIPANT-IP>:<PORT>/status
