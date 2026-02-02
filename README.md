@@ -1,44 +1,50 @@
-Distributed Transactions Lab (2PC / 3PC)
+# Mini MapReduce Lab — Amazon EMR
 
-This project implements distributed transactions using Two-Phase Commit (2PC) and Three-Phase Commit (3PC) protocols across multiple EC2 nodes. The system demonstrates atomicity, consistency, and fault tolerance in a simple key-value store.
+## Description
+This repository contains the MapReduce pipeline for the Mini-MapReduce lab on Amazon EMR. 
+The job counts word frequencies in a sample Wikipedia dataset (`corpus.txt`) using Python mapper and reducer scripts.
 
-🟢 Components
+## Files
+- `mapper.py` — Mapper script that emits each word with a count of 1.
+- `reducer.py` — Reducer script that sums counts for each word.
+- `README.md` — This file.
+- `corpus.txt` — Sample dataset (Simple English Wikipedia dump).
 
-Coordinator — initiates transactions, collects votes, and decides commit/abort.
+## Dataset
+The dataset is a small sample from the Simple English Wikipedia:
+- Source: [https://github.com/LGDoor/Dump-of-Simple-English-Wiki](https://github.com/LGDoor/Dump-of-Simple-English-Wiki)
+- The file used: `corpus.txt`
 
-Participant (Resource Manager) — votes on transactions, applies operations locally, maintains WAL.
+## How to Run
 
-Client — triggers transactions on the coordinator.
+1. **Upload dataset to HDFS:**
+hdfs dfs -mkdir -p /user/hadoop/input
+hdfs dfs -put corpus.txt /user/hadoop/input/
+Remove old output directory (if exists):
 
-⚙️ Requirements
+hdfs dfs -rm -r /user/hadoop/output
 
-Python 3.x
 
-Standard library only (HTTP server and client)
+Run Hadoop Streaming job:
 
-EC2 instances or local machines for multiple nodes
+hadoop jar /usr/lib/hadoop-mapreduce/hadoop-streaming.jar \
+  -files mapper.py,reducer.py \
+  -input /user/hadoop/input/ \
+  -output /user/hadoop/output/ \
+  -mapper mapper.py \
+  -reducer reducer.py
 
-💻 Usage
-1. Start Participants
-# Node B
-python3 participant.py --id B --port 8001 --wal /tmp/B.wal
 
-# Node C
-python3 participant.py --id C --port 8002 --wal /tmp/C.wal
+Check output:
 
-2. Start Coordinator
-python3 coordinator.py --id COORD --port 8000 --participants http://<B-IP>:8001,http://<C-IP>:8002
+hdfs dfs -ls /user/hadoop/output/
+hdfs dfs -cat /user/hadoop/output/part-00000 | head
 
-3. Start Client & Trigger Transactions
-# 2PC transaction
-python3 client.py --coord http://<COORD-IP>:8000 start TX1 2PC SET x 5
 
-# 3PC transaction
-python3 client.py --coord http://<COORD-IP>:8000 start TX2 3PC SET y 10
+The output files (part-00000, part-00001, etc.) will contain word counts.
 
-4. Check Status
-# Coordinator status
-curl http://<COORD-IP>:8000/status
+Notes
 
-# Participant status
-curl http://<PARTICIPANT-IP>:<PORT>/status
+Ensure the scripts are executable:
+
+chmod +x mapper.py reducer.py
