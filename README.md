@@ -1,50 +1,73 @@
-# Mini MapReduce Lab — Amazon EMR
+```mermaid
+flowchart TD
+    %% ── INPUTS ──
+    V0["🎬 **Vision**\nВидеофреймы · CMU-MOSEI"]:::vis
+    A0["🎙️ **Audio**\nРечевой сигнал · waveform"]:::aud
+    T0["📝 **Text**\nTranscript · CMU-MOSEI"]:::txt
 
-## Description
-This repository contains the MapReduce pipeline for the Mini-MapReduce lab on Amazon EMR. 
-The job counts word frequencies in a sample Wikipedia dataset (`corpus.txt`) using Python mapper and reducer scripts.
+    %% ── FEATURE EXTRACTION ──
+    V1["**OpenFace**\n&#91;60 × 35&#93;"]:::vis
+    A1["**COVAREP**\n&#91;60 × 74&#93;"]:::aud
+    T1["**BERT Tokenizer**\n&#91;50 tokens&#93;"]:::txt
 
-## Files
-- `mapper.py` — Mapper script that emits each word with a count of 1.
-- `reducer.py` — Reducer script that sums counts for each word.
-- `README.md` — This file.
-- `corpus.txt` — Sample dataset (Simple English Wikipedia dump).
+    %% ── PROJECTION ──
+    V2["**Conv1D** (k=3)\nBatchNorm + ReLU\n&#91;60 × 128&#93;"]:::vis
+    A2["**Conv1D** (k=3)\nBatchNorm + ReLU\n&#91;60 × 128&#93;"]:::aud
+    T2["**BERT-base encoder**\nLinear(768→128)\n&#91;50 × 128&#93;"]:::txt
 
-## Dataset
-The dataset is a small sample from the Simple English Wikipedia:
-- Source: [https://github.com/LGDoor/Dump-of-Simple-English-Wiki](https://github.com/LGDoor/Dump-of-Simple-English-Wiki)
-- The file used: `corpus.txt`
+    %% ── BOTTLENECK FUSION BLOCK ──
+    subgraph BN ["🔴 Bottleneck Attention Fusion Block (×N layers)"]
+        direction TB
+        BT["**Bottleneck Tokens**\nn=4 · dim=128\nshared across modalities"]:::bn
 
-## How to Run
+        V3["**Self-Attention**\nVision\n&#91;60+4 × 128&#93;"]:::vis
+        A3["**Self-Attention**\nAudio\n&#91;60+4 × 128&#93;"]:::aud
+        T3["**Self-Attention**\nText\n&#91;50+4 × 128&#93;"]:::txt
 
-1. **Upload dataset to HDFS:**
-hdfs dfs -mkdir -p /user/hadoop/input
-hdfs dfs -put corpus.txt /user/hadoop/input/
-Remove old output directory (if exists):
+        V3b["FFN + LayerNorm\n128→512→128"]:::vis
+        A3b["FFN + LayerNorm\n128→512→128"]:::aud
+        T3b["FFN + LayerNorm\n128→512→128"]:::txt
 
-hdfs dfs -rm -r /user/hadoop/output
+        BT -. cross-modal .-> V3
+        BT -. cross-modal .-> A3
+        BT -. cross-modal .-> T3
 
+        V3 --> V3b
+        A3 --> A3b
+        T3 --> T3b
+    end
 
-Run Hadoop Streaming job:
+    %% ── AGGREGATION ──
+    V4["**Mean Pooling**\n60 frames → &#91;128&#93;"]:::vis
+    A4["**Mean Pooling**\n60 frames → &#91;128&#93;"]:::aud
+    T4["**CLS Token**\npos 0 → &#91;128&#93;"]:::txt
 
-hadoop jar /usr/lib/hadoop-mapreduce/hadoop-streaming.jar \
-  -files mapper.py,reducer.py \
-  -input /user/hadoop/input/ \
-  -output /user/hadoop/output/ \
-  -mapper mapper.py \
-  -reducer reducer.py
+    %% ── FUSION & CLASSIFICATION ──
+    CAT["**Concatenate**\n&#91;128 ‖ 128 ‖ 128&#93; → &#91;384&#93;"]:::fuse
+    CLS["**Classifier**\nLinear(384→128) → ReLU → Dropout(0.1) → Linear(128→6)\nlogits &#91;B × 6&#93;"]:::cls
+    OUT["sigmoid → threshold 0.5\n😊 happy · 😢 sad · 😠 anger\n😲 surprise · 😒 disgust · 😨 fear"]:::out
 
+    %% ── FLOW ──
+    V0 --> V1 --> V2 --> BN
+    A0 --> A1 --> A2 --> BN
+    T0 --> T1 --> T2 --> BN
 
-Check output:
+    V3b --> V4
+    A3b --> A4
+    T3b --> T4
 
-hdfs dfs -ls /user/hadoop/output/
-hdfs dfs -cat /user/hadoop/output/part-00000 | head
+    V4 --> CAT
+    A4 --> CAT
+    T4 --> CAT
 
+    CAT --> CLS --> OUT
 
-The output files (part-00000, part-00001, etc.) will contain word counts.
-
-Notes
-
-Ensure the scripts are executable:
-
-chmod +x mapper.py reducer.py
+    %% ── STYLES ──
+    classDef vis fill:#bbdefb,stroke:#1565c0,color:#0d47a1
+    classDef aud fill:#ffe0b2,stroke:#fb8c00,color:#bf360c
+    classDef txt fill:#c8e6c9,stroke:#43a047,color:#1b5e20
+    classDef bn  fill:#f8bbd0,stroke:#e91e63,color:#880e4f
+    classDef fuse fill:#ce93d8,stroke:#7b1fa2,color:#4a148c
+    classDef cls fill:#7b1fa2,stroke:#4a148c,color:#ffffff
+    classDef out fill:#f3e5f5,stroke:#7b1fa2,color:#4a148c
+```
