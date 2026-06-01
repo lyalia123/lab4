@@ -1,7 +1,7 @@
 ```mermaid
 flowchart TB
 
-%% ───────── ROW 1 (INPUTS + FEATURE) ─────────
+%% ───────── ROW 1 (INPUTS + FEATURE + PROJECTION) ─────────
 subgraph R1[" "]
 direction LR
 
@@ -19,18 +19,6 @@ A1["**COVAREP**\n&#91;60 × 74&#93;"]:::aud
 T1["**BERT Tokenizer**\n&#91;50 tokens&#93;"]:::txt
 end
 
-end
-
-%% connections inside row 1
-V0 --> V1
-A0 --> A1
-T0 --> T1
-
-
-%% ───────── ROW 2 (PROJECTION + BN CENTER) ─────────
-subgraph R2[" "]
-direction LR
-
 subgraph PROJ["PROJECTION"]
 direction TB
 V2["Conv1D (k=3)\nBN + ReLU\n&#91;60 × 128&#93;"]:::vis
@@ -38,17 +26,28 @@ A2["Conv1D (k=3)\nBN + ReLU\n&#91;60 × 128&#93;"]:::aud
 T2["BERT-base\nLinear 768→128\n&#91;50 × 128&#93;"]:::txt
 end
 
-subgraph BN["🔴 Bottleneck Attention Fusion Block (×N layers)"]
+end
+
+V0 --> V1 --> V2
+A0 --> A1 --> A2
+T0 --> T1 --> T2
+
+
+%% ───────── ROW 2 (BOTTLENECK + AGG + FUSION) ─────────
+subgraph R2[" "]
+direction LR
+
+subgraph BN["🔴 Bottleneck Block (×N)"]
 direction TB
 BT["Bottleneck Tokens\nn=4 · dim=128"]:::bn
 
-V3["Self-Attention Vision\n&#91;60+4 × 128&#93;"]:::vis
-A3["Self-Attention Audio\n&#91;60+4 × 128&#93;"]:::aud
-T3["Self-Attention Text\n&#91;50+4 × 128&#93;"]:::txt
+V3["Self-Attn Vision\n&#91;60+4 × 128&#93;"]:::vis
+A3["Self-Attn Audio\n&#91;60+4 × 128&#93;"]:::aud
+T3["Self-Attn Text\n&#91;50+4 × 128&#93;"]:::txt
 
-V3b["FFN + LN\n128→512→128"]:::vis
-A3b["FFN + LN\n128→512→128"]:::aud
-T3b["FFN + LN\n128→512→128"]:::txt
+V3b["FFN + LN"]:::vis
+A3b["FFN + LN"]:::aud
+T3b["FFN + LN"]:::txt
 
 BT -. cross .-> V3
 BT -. cross .-> A3
@@ -59,32 +58,24 @@ A3 --> A3b
 T3 --> T3b
 end
 
-end
-
-%% connections row2
-V1 --> V2 --> BN
-A1 --> A2 --> BN
-T1 --> T2 --> BN
-
-
-%% ───────── ROW 3 (AGGREGATION + FUSION) ─────────
-subgraph R3[" "]
-direction LR
-
 subgraph AGG["AGGREGATION"]
 direction TB
-V4["Mean Pooling\n→ 128"]:::vis
-A4["Mean Pooling\n→ 128"]:::aud
-T4["CLS Token\n→ 128"]:::txt
+V4["Mean Pooling → 128"]:::vis
+A4["Mean Pooling → 128"]:::aud
+T4["CLS Token → 128"]:::txt
 end
 
-CAT["Concatenate\n384"]:::fuse
-CLS["Classifier\n384→128→6"]:::cls
-OUT["Sigmoid outputs\n6 emotions"]:::out
+CAT["Concatenate 384"]:::fuse
+CLS["Classifier 384→128→6"]:::cls
+OUT["Sigmoid outputs"]:::out
 
 end
 
-%% connections row3
+%% ───────── FLOW BETWEEN ROWS ─────────
+V2 --> V3
+A2 --> A3
+T2 --> T3
+
 V3b --> V4 --> CAT
 A3b --> A4 --> CAT
 T3b --> T4 --> CAT
